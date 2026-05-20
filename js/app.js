@@ -598,27 +598,29 @@
   }
 
   /* ── Edit Game Modal ── */
-  function openEditGame(gameId, fromFlagged = false) {
-    const lg = league(); activeEditGameId = gameId;
-    const game = (lg.schedule||[]).find(g=>g.id===gameId) || (lg.flagged||[]).find(g=>g.id===gameId);
-    if (!game) return;
-
-    const teamOptions = (id) => lg.teams.map(t =>
-      `<option value="${t.id}" ${t.id===id?'selected':''}>${t.name}</option>`).join('');
+  /* shared modal builder used by both edit and add */
+  function buildGameModal({ title, homeId, awayId, date, time, gymId, fromFlagged, isNew }) {
+    const lg = league();
+    const allTeamOpts = (selectedId) => lg.teams.map(t =>
+      `<option value="${t.id}" ${t.id === selectedId ? 'selected' : ''}>${t.name}</option>`).join('');
     const gymOptions = lg.gyms.map(g =>
-      `<option value="${g.id}" ${g.id===game.gymId?'selected':''}>${g.name}</option>`).join('');
+      `<option value="${g.id}" ${g.id === gymId ? 'selected' : ''}>${g.name}</option>`).join('');
 
     $('modal-content').innerHTML = `
-      <h2 class="modal-title">${fromFlagged ? 'Assign Game' : 'Edit Game'}</h2>
+      <h2 class="modal-title">${title}</h2>
 
       <div class="conflict-summary-grid">
         <div class="conflict-summary-block">
           <div class="conflict-summary-team">🏠 Home Conflicts</div>
-          <div class="conflict-summary-list" id="home-conflict-display">${conflictTagsHTML(game.homeTeamId)}</div>
+          <div class="conflict-summary-list" id="home-conflict-display">
+            ${homeId ? conflictTagsHTML(homeId) : '<em class="text-muted" style="font-size:12px">Select a team</em>'}
+          </div>
         </div>
         <div class="conflict-summary-block">
           <div class="conflict-summary-team">✈ Away Conflicts</div>
-          <div class="conflict-summary-list" id="away-conflict-display">${conflictTagsHTML(game.awayTeamId)}</div>
+          <div class="conflict-summary-list" id="away-conflict-display">
+            ${awayId ? conflictTagsHTML(awayId) : '<em class="text-muted" style="font-size:12px">Select a team</em>'}
+          </div>
         </div>
       </div>
 
@@ -626,22 +628,24 @@
         <div class="modal-fg">
           <label>Home Team</label>
           <select id="eg-home" onchange="App.refreshConflictDisplay()">
-            ${teamOptions(game.homeTeamId)}
+            <option value="">— Select Team —</option>
+            ${allTeamOpts(homeId)}
           </select>
         </div>
         <div class="modal-fg">
           <label>Away Team</label>
           <select id="eg-away" onchange="App.refreshConflictDisplay()">
-            ${teamOptions(game.awayTeamId)}
+            <option value="">— Select Team —</option>
+            ${allTeamOpts(awayId)}
           </select>
         </div>
         <div class="modal-fg">
           <label>Date</label>
-          <input type="date" id="eg-date" value="${game.date||''}">
+          <input type="date" id="eg-date" value="${date || ''}">
         </div>
         <div class="modal-fg">
           <label>Time</label>
-          <input type="time" id="eg-time" step="600" value="${game.time||''}">
+          <input type="time" id="eg-time" step="600" value="${time || ''}">
         </div>
         <div class="modal-fg">
           <label>Gym</label>
@@ -655,10 +659,49 @@
       <div id="conflict-warning" class="conflict-warning" style="display:none"></div>
 
       <div class="modal-actions">
-        <button class="btn btn-primary" onclick="App.checkAndSaveGame(${fromFlagged})">Save Game</button>
+        <button class="btn btn-primary" onclick="App.checkAndSaveGame(${!!fromFlagged}, ${!!isNew})">
+          ${isNew ? '+ Add Game' : 'Save Changes'}
+        </button>
+        ${!isNew ? `<button class="btn btn-danger" onclick="App.deleteGame()">Delete Game</button>` : ''}
         <button class="btn btn-outline" onclick="App.closeModal()">Cancel</button>
       </div>`;
     openModal();
+  }
+
+  function openEditGame(gameId, fromFlagged = false) {
+    const lg = league();
+    activeEditGameId = gameId;
+    const game = (lg.schedule||[]).find(g=>g.id===gameId) || (lg.flagged||[]).find(g=>g.id===gameId);
+    if (!game) return;
+    buildGameModal({
+      title: fromFlagged ? 'Assign Game' : 'Edit Game',
+      homeId: game.homeTeamId,
+      awayId: game.awayTeamId,
+      date:   game.date,
+      time:   game.time,
+      gymId:  game.gymId,
+      fromFlagged,
+      isNew: false
+    });
+  }
+
+  function openAddGame() {
+    const lg = league();
+    if (!lg || !lg.teams.length) return alert('Add teams first before adding a game.');
+    activeEditGameId = '__new__';
+    buildGameModal({
+      title: '+ Add Game Manually',
+      homeId: null, awayId: null, date: null, time: null, gymId: null,
+      fromFlagged: false, isNew: true
+    });
+  }
+
+  function deleteGame() {
+    if (!confirm('Delete this game from the schedule?')) return;
+    const lg = league();
+    lg.schedule = (lg.schedule||[]).filter(g => g.id !== activeEditGameId);
+    lg.flagged  = (lg.flagged||[]).filter(g => g.id !== activeEditGameId);
+    Storage.updateLeague(state, lg); save(); closeModal(); renderSchedule();
   }
 
   function refreshConflictDisplay() {
@@ -673,16 +716,16 @@
     if (cw) { cw.style.display = 'none'; cw.innerHTML = ''; }
   }
 
-  function checkAndSaveGame(fromFlagged) {
+  function checkAndSaveGame(fromFlagged, isNew) {
     const date   = $('eg-date').value;
     const time   = $('eg-time').value;
     const homeId = $('eg-home').value;
     const awayId = $('eg-away').value;
 
-    if (!date || !time) return alert('Date and time are required.');
-    if (homeId === awayId) return alert('Home and Away teams must be different.');
+    if (!homeId || !awayId) return alert('Please select both Home and Away teams.');
+    if (!date || !time)     return alert('Date and time are required.');
+    if (homeId === awayId)  return alert('Home and Away teams must be different.');
 
-    // Check conflicts for both teams
     const homeConflict = checkConflictForSlot(homeId, date, time);
     const awayConflict = checkConflictForSlot(awayId, date, time);
     const warnings = [homeConflict, awayConflict].filter(Boolean);
@@ -694,13 +737,13 @@
         <div class="conflict-warning-title">⚠ Conflict Detected</div>
         ${warnings.map(w => `<div class="conflict-warning-line">• ${w}</div>`).join('')}
         <div class="conflict-warning-actions">
-          <button class="btn btn-danger btn-sm" onclick="App.saveGameEdit(${fromFlagged})">Override &amp; Save Anyway</button>
+          <button class="btn btn-danger btn-sm" onclick="App.saveGameEdit(${!!fromFlagged}, ${!!isNew})">Override &amp; Save Anyway</button>
           <button class="btn btn-outline btn-sm" onclick="App.dismissConflictWarning()">Go Back &amp; Fix</button>
         </div>`;
       return;
     }
 
-    saveGameEdit(fromFlagged);
+    saveGameEdit(fromFlagged, isNew);
   }
 
   function dismissConflictWarning() {
@@ -708,15 +751,35 @@
     if (cw) { cw.style.display = 'none'; cw.innerHTML = ''; }
   }
 
-  function saveGameEdit(fromFlagged) {
-    const lg    = league();
-    const date  = $('eg-date').value;
-    const time  = $('eg-time').value;
-    const gym   = $('eg-gym').value;
+  function saveGameEdit(fromFlagged, isNew) {
+    const lg     = league();
+    const date   = $('eg-date').value;
+    const time   = $('eg-time').value;
+    const gym    = $('eg-gym').value;
     const homeId = $('eg-home').value;
     const awayId = $('eg-away').value;
-    if (!date || !time) return alert('Date and time are required.');
+    if (!homeId || !awayId) return alert('Please select both teams.');
+    if (!date || !time)     return alert('Date and time are required.');
 
+    // ── Brand new game ──────────────────────────
+    if (isNew || activeEditGameId === '__new__') {
+      const newGame = {
+        id: 'g-' + uid(),
+        homeTeamId: homeId,
+        awayTeamId: awayId,
+        gymId:  gym || null,
+        date,   time,
+        week:   date ? getWeek(date) : null,
+        status: 'scheduled',
+        homeScore: null,
+        awayScore: null
+      };
+      lg.schedule = [...(lg.schedule||[]), newGame];
+      Storage.updateLeague(state, lg); save(); closeModal(); renderSchedule();
+      return;
+    }
+
+    // ── Edit existing game ──────────────────────
     let game = (lg.schedule||[]).find(g=>g.id===activeEditGameId);
     const isFlagged = !game;
     if (isFlagged) game = (lg.flagged||[]).find(g=>g.id===activeEditGameId);
@@ -727,7 +790,7 @@
     game.date  = date;
     game.time  = time;
     game.gymId = gym || null;
-    game.week  = getWeek(date);
+    game.week  = date ? getWeek(date) : null;
 
     if (isFlagged) {
       game.status = 'scheduled';
@@ -1006,6 +1069,7 @@
     $('btn-add-team').addEventListener('click', addTeam);
     $('team-name').addEventListener('keydown', e => e.key==='Enter' && addTeam());
     $('btn-generate').addEventListener('click', runGenerate);
+    $('btn-add-game').addEventListener('click', () => openAddGame());
     $('view-mode').addEventListener('change', renderSchedule);
     $('btn-print').addEventListener('click', () => Exporter.print());
     $('btn-pdf').addEventListener('click', () => { const lg=league(); if(lg) Exporter.toPDF(lg); });
@@ -1027,7 +1091,7 @@
     openConflictsModal, addConflict, removeConflict, saveConflicts, toggleConflictTime,
     toggleDate, toggleGymOnDate, quickFillSlots, addSingleSlot, removeSlot,
     quickFillBulk, addBulkSingleSlot, removeBulkSlot, applyToAll,
-    openEditGame, checkAndSaveGame, saveGameEdit, dismissConflictWarning, refreshConflictDisplay,
+    openEditGame, openAddGame, deleteGame, checkAndSaveGame, saveGameEdit, dismissConflictWarning, refreshConflictDisplay,
     enterScore, saveScore, closeModal,
   };
 
