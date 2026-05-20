@@ -1,20 +1,19 @@
 /* scheduler.js — Schedule generation engine */
 const Scheduler = (() => {
 
-  /* ── Public entry point ─────────────────────── */
   function generate(league) {
     const { teams, gyms, availableDates, settings } = league;
     const errs = [];
 
-    if (teams.length < 2)          errs.push('Need at least 2 teams.');
-    if (!gyms.length)              errs.push('No gyms configured.');
-    if (!availableDates.length)    errs.push('No game dates selected.');
+    if (teams.length < 2)       errs.push('Need at least 2 teams.');
+    if (!gyms.length)           errs.push('No gyms configured.');
+    if (!availableDates.length) errs.push('No game dates selected.');
     const totalSlots = countSlots(availableDates, gyms);
-    if (!totalSlots)               errs.push('No time slots configured on any game date.');
+    if (!totalSlots)            errs.push('No time slots configured on any game date.');
     if (errs.length) return { ok: false, errors: errs };
 
-    const matchups  = generateMatchups(teams, settings.gamesPerTeam);
-    const slots     = buildSlots(availableDates, gyms);
+    const matchups = generateMatchups(teams, settings.gamesPerTeam);
+    const slots    = buildSlots(availableDates, gyms);
 
     const tracker = {};
     teams.forEach(t => {
@@ -37,44 +36,59 @@ const Scheduler = (() => {
           break;
         }
       }
-      if (!placed) {
-        flagged.push(makeFlagged(m));
-      }
+      if (!placed) flagged.push(makeFlagged(m));
     }
 
     return { ok: true, scheduled, flagged };
   }
 
-  /* ── Round-robin matchup generation ─────────── */
+  /* ── Round-robin: unique pairs only, balanced home/away ── */
   function generateMatchups(teams, gamesPerTeam) {
-    const ids  = teams.map(t => t.id);
-    const arr  = ids.length % 2 === 0 ? [...ids] : [...ids, '__BYE__'];
-    const n    = arr.length;
-    const rpc  = n - 1;
+    const ids = teams.map(t => t.id);
+    const arr = ids.length % 2 === 0 ? [...ids] : [...ids, '__BYE__'];
+    const rpc = arr.length - 1; // max unique rounds
 
+    // Cap gamesPerTeam at rpc so each pair plays at most once
+    const roundsToUse = Math.min(gamesPerTeam, rpc);
+
+    // Build all rounds
     const allRounds = buildRounds(arr);
 
-    const matchups = [];
-    for (let r = 0; r < gamesPerTeam; r++) {
-      const cycleIdx  = r % rpc;
-      const cycleNum  = Math.floor(r / rpc);
-      const flip      = cycleNum % 2 === 1;
-      for (const m of allRounds[cycleIdx]) {
-        matchups.push(flip
-          ? { homeTeamId: m.awayTeamId, awayTeamId: m.homeTeamId }
-          : { homeTeamId: m.homeTeamId, awayTeamId: m.awayTeamId });
-      }
+    // Collect matchups from the rounds we need
+    const rawPairs = [];
+    for (let r = 0; r < roundsToUse; r++) {
+      rawPairs.push(...allRounds[r]);
     }
-    return matchups;
+
+    // Balance home/away: assign home/away dynamically per team need
+    const homeCount = {};
+    const awayCount = {};
+    ids.forEach(id => { homeCount[id] = 0; awayCount[id] = 0; });
+
+    return rawPairs.map(pair => {
+      const a = pair.homeTeamId;
+      const b = pair.awayTeamId;
+
+      // Whoever needs a home game more gets it
+      const aNeedsHome = (awayCount[a] || 0) - (homeCount[a] || 0);
+      const bNeedsHome = (awayCount[b] || 0) - (homeCount[b] || 0);
+
+      const finalHome = aNeedsHome >= bNeedsHome ? a : b;
+      const finalAway = finalHome === a ? b : a;
+
+      homeCount[finalHome] = (homeCount[finalHome] || 0) + 1;
+      awayCount[finalAway] = (awayCount[finalAway] || 0) + 1;
+
+      return { homeTeamId: finalHome, awayTeamId: finalAway };
+    });
   }
 
   function buildRounds(arr) {
-    const n      = arr.length;
-    const rounds = n - 1;
-    const w      = [...arr];
-    const all    = [];
+    const n   = arr.length;
+    const w   = [...arr];
+    const all = [];
 
-    for (let r = 0; r < rounds; r++) {
+    for (let r = 0; r < n - 1; r++) {
       const round = [];
       for (let i = 0; i < n / 2; i++) {
         const home = w[i];
@@ -84,6 +98,7 @@ const Scheduler = (() => {
         }
       }
       all.push(round);
+      // Rotate: fix w[0], rotate w[1..n-1]
       const last = w[n - 1];
       for (let i = n - 1; i > 1; i--) w[i] = w[i - 1];
       w[1] = last;
@@ -91,9 +106,9 @@ const Scheduler = (() => {
     return all;
   }
 
-  /* ── Slot pool builder ──────────────────────── */
+  /* ── Slot pool builder ── */
   function buildSlots(availableDates, gyms) {
-    const slots = [];
+    const slots  = [];
     const sorted = [...availableDates].sort((a, b) => a.date.localeCompare(b.date));
     for (const dc of sorted) {
       const sortedTimes = [...dc.times].sort();
@@ -121,7 +136,7 @@ const Scheduler = (() => {
     return count;
   }
 
-  /* ── Placement check ────────────────────────── */
+  /* ── Placement check ── */
   function canPlace(matchup, slot, tracker, teams, settings) {
     const { homeTeamId, awayTeamId } = matchup;
     const { date, time } = slot;
@@ -164,7 +179,7 @@ const Scheduler = (() => {
     return false;
   }
 
-  /* ── Record helpers ─────────────────────────── */
+  /* ── Record helpers ── */
   function recordGame(tracker, matchup, slot, gameId) {
     const week = getWeek(slot.date);
     for (const tid of [matchup.homeTeamId, matchup.awayTeamId]) {
@@ -197,18 +212,13 @@ const Scheduler = (() => {
       id: 'f-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
       homeTeamId: matchup.homeTeamId,
       awayTeamId: matchup.awayTeamId,
-      gymId: null,
-      courtIndex: null,
-      date: null,
-      time: null,
-      week: null,
-      status: 'flagged',
-      homeScore: null,
-      awayScore: null
+      gymId: null, courtIndex: null, date: null,
+      time: null, week: null, status: 'flagged',
+      homeScore: null, awayScore: null
     };
   }
 
-  /* ── Date/time utilities ────────────────────── */
+  /* ── Date/time utils ── */
   function getWeek(dateStr) {
     const d    = new Date(dateStr + 'T12:00:00');
     const jan1 = new Date(d.getFullYear(), 0, 1);
