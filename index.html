@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CourtFlow — League Scheduler</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/flatpickr/4.6.13/flatpickr.min.css">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+  <header class="app-header">
+    <div class="header-top">
+      <div class="brand">
+        <svg class="brand-icon" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="20" cy="20" r="18" stroke="#E8621A" stroke-width="2.5"/>
+          <path d="M20 2 Q20 20 20 38" stroke="#E8621A" stroke-width="2"/>
+          <path d="M2 20 Q20 20 38 20" stroke="#E8621A" stroke-width="2"/>
+          <path d="M5 10 Q20 16 35 10" stroke="#E8621A" stroke-width="1.5" fill="none"/>
+          <path d="M5 30 Q20 24 35 30" stroke="#E8621A" stroke-width="1.5" fill="none"/>
+        </svg>
+        <span class="brand-name">CourtFlow</span>
+      </div>
+      <div class="league-bar">
+        <select id="league-select" class="league-select"></select>
+        <button id="btn-new-league" class="btn btn-ghost-white">+ New League</button>
+      </div>
+    </div>
+    <nav class="main-nav">
+      <button class="nav-btn active" data-tab="setup">⚙ Setup</button>
+      <button class="nav-btn" data-tab="dates">📅 Game Dates</button>
+      <button class="nav-btn" data-tab="generate">⚡ Generate</button>
+      <button class="nav-btn" data-tab="schedule">📋 Schedule</button>
+      <button class="nav-btn" data-tab="standings">🏆 Standings</button>
+    </nav>
+  </header>
+
+  <div class="app-body">
+
+    <!-- ═══ SETUP ═══ -->
+    <section id="tab-setup" class="tab active">
+      <div class="page-header">
+        <h1>League Setup</h1>
+        <p>Configure settings, gyms, and teams. All changes auto-save.</p>
+      </div>
+      <div class="grid-layout">
+
+        <div class="card" id="card-settings">
+          <h2 class="card-title">Settings</h2>
+          <div class="form-grid">
+            <div class="fg full">
+              <label>League Name</label>
+              <input type="text" id="s-name" placeholder="Summer Basketball 2025">
+            </div>
+            <div class="fg">
+              <label>Games Per Team</label>
+              <input type="number" id="s-games" min="1" max="30" value="10">
+            </div>
+            <div class="fg">
+              <label>Max Games / Week / Team</label>
+              <select id="s-max-week">
+                <option value="1">1 per week</option>
+                <option value="2" selected>2 per week</option>
+                <option value="3">3 per week</option>
+              </select>
+            </div>
+            <div class="fg">
+              <label>Game Duration (min)</label>
+              <input type="number" id="s-duration" min="20" max="180" step="5" value="60">
+            </div>
+            <div class="fg">
+              <label>Buffer Between Games (min)</label>
+              <input type="number" id="s-buffer" min="0" max="60" step="5" value="15">
+            </div>
+            <div class="fg full">
+              <label class="check-label">
+                <input type="checkbox" id="s-avoid-b2b" checked>
+                <span>Avoid scheduling teams on back-to-back days</span>
+              </label>
+            </div>
+          </div>
+          <button id="btn-save-settings" class="btn btn-primary">Save Settings</button>
+          <span id="settings-saved" class="save-indicator" style="display:none">✓ Saved</span>
+        </div>
+
+        <div class="card" id="card-gyms">
+          <h2 class="card-title">Gyms</h2>
+          <div class="add-row">
+            <input type="text" id="gym-name" placeholder="Gym / facility name" class="grow">
+            <div class="courts-input">
+              <input type="number" id="gym-courts" min="1" max="20" value="1" title="Number of courts">
+              <span class="input-label">courts</span>
+            </div>
+            <button id="btn-add-gym" class="btn btn-primary">Add</button>
+          </div>
+          <ul id="gyms-list" class="item-list"></ul>
+        </div>
+
+        <div class="card card-wide" id="card-teams">
+          <h2 class="card-title">Teams <span id="team-badge" class="badge">0</span></h2>
+          <div class="add-row">
+            <input type="text" id="team-name" placeholder="Team name" class="grow">
+            <button id="btn-add-team" class="btn btn-primary">Add Team</button>
+          </div>
+          <div id="teams-grid" class="teams-grid"></div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ═══ DATES ═══ -->
+    <section id="tab-dates" class="tab">
+      <div class="page-header">
+        <h1>Game Dates</h1>
+        <p>Pick dates from the calendar, then configure time slots and gyms for each.</p>
+      </div>
+      <div class="grid-layout">
+        <div class="card">
+          <h2 class="card-title">Select Dates</h2>
+          <div id="cal-container"></div>
+        </div>
+        <div class="card card-wide">
+          <h2 class="card-title">Game Day Configuration <span id="dates-badge" class="badge">0 dates</span></h2>
+          <div id="dates-list" class="dates-list"></div>
+          <div id="no-dates-msg" class="empty-msg">No dates selected yet. Use the calendar to pick game days.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ GENERATE ═══ -->
+    <section id="tab-generate" class="tab">
+      <div class="page-header">
+        <h1>Generate Schedule</h1>
+        <p>Review your setup, then hit Generate. Unschedulable games will be flagged for manual entry.</p>
+      </div>
+      <div class="card gen-card">
+        <div id="gen-summary" class="gen-summary"></div>
+        <button id="btn-generate" class="btn btn-accent btn-lg">⚡ Generate Schedule</button>
+        <div id="gen-result"></div>
+      </div>
+    </section>
+
+    <!-- ═══ SCHEDULE ═══ -->
+    <section id="tab-schedule" class="tab">
+      <div class="page-header">
+        <h1>Schedule</h1>
+        <div class="header-actions">
+          <select id="view-mode" class="view-select">
+            <option value="week">By Week</option>
+            <option value="date">By Date</option>
+            <option value="team">By Team</option>
+          </select>
+          <button id="btn-print" class="btn btn-sm btn-outline">🖨 Print</button>
+          <button id="btn-pdf" class="btn btn-sm btn-outline">📄 PDF</button>
+          <button id="btn-excel" class="btn btn-sm btn-outline">📊 Excel</button>
+        </div>
+      </div>
+      <div id="flagged-panel" class="card flagged-card" style="display:none">
+        <h2 class="card-title flagged-title">⚠ Flagged — Needs Manual Scheduling</h2>
+        <p class="flagged-desc">These matchups couldn't fit the constraints. Click a game to assign a date, time, and gym.</p>
+        <div id="flagged-list" class="flagged-list"></div>
+      </div>
+      <div id="schedule-view"></div>
+      <div id="no-schedule-msg" class="empty-msg card">No schedule generated yet. Go to the Generate tab to create one.</div>
+    </section>
+
+    <!-- ═══ STANDINGS ═══ -->
+    <section id="tab-standings" class="tab">
+      <div class="page-header">
+        <h1>Standings</h1>
+      </div>
+      <div class="grid-layout">
+        <div class="card card-wide">
+          <h2 class="card-title">League Standings</h2>
+          <div id="standings-table"></div>
+        </div>
+        <div class="card card-wide">
+          <h2 class="card-title">Enter Scores</h2>
+          <div id="score-list"></div>
+          <div id="no-scores-msg" class="empty-msg">No scheduled games yet.</div>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- ═══ MODAL ═══ -->
+  <div id="modal-overlay" class="modal-overlay" style="display:none">
+    <div class="modal-box">
+      <button id="modal-close" class="modal-close-btn">✕</button>
+      <div id="modal-content"></div>
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/flatpickr/4.6.13/flatpickr.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+  <script src="js/storage.js"></script>
+  <script src="js/scheduler.js"></script>
+  <script src="js/export.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
