@@ -34,6 +34,7 @@
       <button class="nav-btn" data-tab="generate">⚡ Generate</button>
       <button class="nav-btn" data-tab="schedule">📋 Schedule</button>
       <button class="nav-btn" data-tab="standings">🏆 Standings</button>
+      <button class="nav-btn" data-tab="report">📊 Report</button>
     </nav>
   </header>
 
@@ -46,7 +47,6 @@
         <p>Configure settings, gyms, and teams. All changes auto-save.</p>
       </div>
       <div class="grid-layout">
-
         <div class="card" id="card-settings">
           <h2 class="card-title">Settings</h2>
           <div class="form-grid">
@@ -106,7 +106,6 @@
           </div>
           <div id="teams-grid" class="teams-grid"></div>
         </div>
-
       </div>
     </section>
 
@@ -159,7 +158,7 @@
       </div>
       <div id="flagged-panel" class="card flagged-card" style="display:none">
         <h2 class="card-title flagged-title">⚠ Flagged — Needs Manual Scheduling</h2>
-        <p class="flagged-desc">These matchups couldn't fit the constraints. Click a game to assign a date, time, and gym.</p>
+        <p class="flagged-desc">These matchups couldn't fit the constraints. Click to assign a date, time, and gym.</p>
         <div id="flagged-list" class="flagged-list"></div>
       </div>
       <div id="schedule-view"></div>
@@ -168,9 +167,7 @@
 
     <!-- ═══ STANDINGS ═══ -->
     <section id="tab-standings" class="tab">
-      <div class="page-header">
-        <h1>Standings</h1>
-      </div>
+      <div class="page-header"><h1>Standings</h1></div>
       <div class="grid-layout">
         <div class="card card-wide">
           <h2 class="card-title">League Standings</h2>
@@ -181,6 +178,18 @@
           <div id="score-list"></div>
           <div id="no-scores-msg" class="empty-msg">No scheduled games yet.</div>
         </div>
+      </div>
+    </section>
+
+    <!-- ═══ REPORT ═══ -->
+    <section id="tab-report" class="tab">
+      <div class="page-header">
+        <h1>Schedule Report</h1>
+        <p>Fairness analysis — confirm every team is treated equally across dates, times, and home/away assignments.</p>
+        <button id="btn-report-pdf" class="btn btn-sm btn-outline">📄 Export Report PDF</button>
+      </div>
+      <div id="report-content">
+        <div class="empty-msg card">No schedule generated yet. Go to the Generate tab first.</div>
       </div>
     </section>
 
