@@ -251,6 +251,7 @@ input, select, button, textarea {
   cursor: pointer;
 }
 
+/* Add row (gym / team inline) */
 .add-row {
   display: flex;
   gap: 8px;
@@ -380,6 +381,7 @@ input, select, button, textarea {
   background: var(--orange) !important;
   border-color: var(--orange) !important;
 }
+.flatpickr-day.selected.inRange { background: var(--orange) !important; }
 
 .dates-list { display: flex; flex-direction: column; gap: 12px; }
 .date-row {
@@ -412,6 +414,7 @@ input, select, button, textarea {
   display: none;
 }
 .date-body.open { display: block; }
+
 .date-section-label {
   font-size: 12px;
   font-weight: 700;
@@ -445,6 +448,7 @@ input, select, button, textarea {
   color: var(--orange);
 }
 .gym-check-label input { display: none; }
+
 .timeslot-controls {
   display: flex;
   gap: 8px;
@@ -533,6 +537,7 @@ input, select, button, textarea {
   background: #fff;
   cursor: pointer;
 }
+
 .flagged-card { border-left: 4px solid var(--warn); margin-bottom: 20px; }
 .flagged-title { color: var(--warn); }
 .flagged-desc { font-size: 13.5px; color: var(--muted); margin-top: -10px; margin-bottom: 16px; }
@@ -548,6 +553,7 @@ input, select, button, textarea {
   gap: 10px;
 }
 .flagged-matchup { font-weight: 600; font-size: 14px; }
+
 .schedule-view { display: flex; flex-direction: column; gap: 20px; }
 .week-block { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
 .week-header {
@@ -559,7 +565,10 @@ input, select, button, textarea {
   font-weight: 700;
   letter-spacing: 0.5px;
 }
-.games-table { width: 100%; border-collapse: collapse; }
+.games-table {
+  width: 100%;
+  border-collapse: collapse;
+}
 .games-table th {
   background: var(--bg);
   padding: 10px 16px;
@@ -593,9 +602,22 @@ input, select, button, textarea {
   transition: all 0.15s;
 }
 .edit-game-btn:hover { background: var(--navy); color: #fff; border-color: var(--navy); }
+.status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 6px;
+}
+.status-dot.scheduled { background: #22c55e; }
+.status-dot.completed { background: var(--navy); }
+.status-dot.flagged { background: var(--warn); }
 
 /* ── Standings ──────────────────────────────── */
-.standings-tbl { width: 100%; border-collapse: collapse; }
+.standings-tbl {
+  width: 100%;
+  border-collapse: collapse;
+}
 .standings-tbl th {
   background: var(--navy);
   color: rgba(255,255,255,0.75);
@@ -606,6 +628,7 @@ input, select, button, textarea {
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
+.standings-tbl th:first-child { border-radius: 0; color: #fff; }
 .standings-tbl td {
   padding: 11px 14px;
   border-bottom: 1px solid var(--border);
@@ -620,6 +643,7 @@ input, select, button, textarea {
 .team-name-cell { font-weight: 600; }
 .stat-cell { text-align: center; }
 .pct-cell { text-align: center; font-weight: 600; color: var(--navy); }
+
 .score-entry-list { display: flex; flex-direction: column; gap: 10px; }
 .score-row {
   display: flex;
@@ -716,6 +740,8 @@ input, select, button, textarea {
   color: var(--text);
 }
 .modal-fg input:focus, .modal-fg select:focus { outline: none; border-color: var(--orange); }
+
+/* ── Conflict Modal ─────────────────────────── */
 .conflict-list { display: flex; flex-direction: column; gap: 8px; margin: 12px 0; }
 .conflict-row {
   background: var(--bg);
@@ -753,6 +779,7 @@ input, select, button, textarea {
   border-radius: 10px;
 }
 .empty-msg.card { box-shadow: none; }
+.divider { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
 .text-muted { color: var(--muted); }
 .text-sm { font-size: 13px; }
 
@@ -776,4 +803,131 @@ input, select, button, textarea {
   .form-grid { grid-template-columns: 1fr; }
   .fg.full { grid-column: 1; }
   .page-header { flex-direction: column; align-items: flex-start; }
+}
+
+/* ── Bulk Apply Panel ───────────────────────── */
+.bulk-panel {
+  background: linear-gradient(135deg, #1A2E50 0%, #1e3a6e 100%);
+  border-radius: 10px;
+  padding: 20px 24px;
+  margin-bottom: 20px;
+  border: 2px solid var(--orange);
+}
+.bulk-panel-header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+.bulk-panel-title {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 19px;
+  font-weight: 800;
+  color: #fff;
+  letter-spacing: 0.5px;
+}
+.bulk-panel .text-muted { color: rgba(255,255,255,0.55) !important; }
+.bulk-panel .date-section-label { color: rgba(255,255,255,0.6); }
+.bulk-panel .gym-check-label {
+  background: rgba(255,255,255,0.08);
+  border-color: rgba(255,255,255,0.2);
+  color: rgba(255,255,255,0.85);
+}
+.bulk-panel .gym-check-label:has(input:checked) {
+  border-color: var(--orange);
+  background: rgba(232,98,26,0.25);
+  color: #fff;
+}
+.bulk-panel .timeslot-controls input[type="time"] {
+  background: rgba(255,255,255,0.1);
+  border-color: rgba(255,255,255,0.2);
+  color: #fff;
+  color-scheme: dark;
+}
+.bulk-panel .btn-primary { background: var(--orange); }
+.bulk-panel .btn-primary:hover { background: var(--orange2); }
+.bulk-panel .btn-outline {
+  background: rgba(255,255,255,0.1);
+  color: #fff;
+  border-color: rgba(255,255,255,0.3);
+}
+.bulk-panel .btn-outline:hover { background: rgba(255,255,255,0.2); }
+
+/* ── Bulk Apply Panel ── */
+.bulk-panel {
+  background: linear-gradient(135deg, #1A2E50 0%, #1e3a6e 100%);
+  border-radius: 10px;
+  padding: 20px 24px;
+  margin-bottom: 20px;
+  border: 2px solid var(--orange);
+}
+.bulk-panel-header { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:4px; }
+.bulk-panel-title { font-family:'Barlow Condensed',sans-serif; font-size:19px; font-weight:800; color:#fff; letter-spacing:0.5px; }
+.bulk-panel .text-muted { color:rgba(255,255,255,0.55) !important; }
+.bulk-panel .date-section-label { color:rgba(255,255,255,0.6); }
+.bulk-panel .gym-check-label { background:rgba(255,255,255,0.08); border-color:rgba(255,255,255,0.2); color:rgba(255,255,255,0.85); }
+.bulk-panel .gym-check-label:has(input:checked) { border-color:var(--orange); background:rgba(232,98,26,0.25); color:#fff; }
+.bulk-panel .timeslot-controls input[type="time"] { background:rgba(255,255,255,0.1); border-color:rgba(255,255,255,0.2); color:#fff; color-scheme:dark; }
+.bulk-panel .btn-primary { background:var(--orange); }
+.bulk-panel .btn-primary:hover { background:var(--orange2); }
+.bulk-panel .btn-outline { background:rgba(255,255,255,0.1); color:#fff; border-color:rgba(255,255,255,0.3); }
+.bulk-panel .btn-outline:hover { background:rgba(255,255,255,0.2); }
+
+/* ── Conflict Tooltip on Team Names ── */
+.team-tooltip {
+  position: relative;
+  cursor: help;
+  border-bottom: 1px dashed var(--muted);
+  display: inline-block;
+}
+.team-tooltip .tooltip-box {
+  display: none;
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  background: var(--navy);
+  color: #fff;
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.7;
+  white-space: nowrap;
+  z-index: 300;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.35);
+  pointer-events: none;
+  border: 1px solid rgba(255,255,255,0.1);
+}
+.team-tooltip .tooltip-box strong { color: var(--orange); display:block; margin-bottom:4px; }
+.team-tooltip:hover .tooltip-box { display: block; }
+
+/* ── Conflict Summary in Edit Modal ── */
+.conflict-summary-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.conflict-summary-block {
+  background: var(--bg);
+  border-radius: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+}
+.conflict-summary-team {
+  font-weight: 700;
+  font-size: 13.5px;
+  color: var(--navy);
+  margin-bottom: 8px;
+}
+.conflict-summary-list { font-size: 12.5px; line-height: 1.7; }
+.conflict-tag {
+  display: inline-block;
+  background: #fee2e2;
+  color: var(--danger);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 12px;
+  margin: 2px 2px 2px 0;
 }
