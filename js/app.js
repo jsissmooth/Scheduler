@@ -2,18 +2,17 @@
 (() => {
   'use strict';
 
-  /* ══ State ══════════════════════════════════ */
   let state = Storage.load();
   let calInstance = null;
   let activeConflictTeamId = null;
   let activeEditGameId = null;
+  let bulkTimes = [];
 
-  /* ══ Utils ══════════════════════════════════ */
   const $ = id => document.getElementById(id);
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
   function league() { return Storage.getCurrentLeague(state); }
-  function save() { Storage.save(state); }
+  function save()   { Storage.save(state); }
 
   function fmtDate(d) {
     if (!d) return '—';
@@ -28,15 +27,13 @@
   }
 
   function teamName(id) {
-    const lg = league();
-    if (!lg) return id;
+    const lg = league(); if (!lg) return id;
     const t = lg.teams.find(t => t.id === id);
     return t ? t.name : id;
   }
 
   function gymName(id) {
-    const lg = league();
-    if (!lg) return id;
+    const lg = league(); if (!lg) return id;
     const g = lg.gyms.find(g => g.id === id);
     return g ? g.name : '—';
   }
@@ -51,14 +48,32 @@
     return Math.ceil(((d - jan1) / 86400000 + jan1.getDay() + 1) / 7);
   }
 
-  /* ══ Tab Management ═════════════════════════ */
+  /* ── Conflict summary for a team ── */
+  function conflictSummary(teamId) {
+    const lg = league(); if (!lg) return '';
+    const team = lg.teams.find(t => t.id === teamId);
+    if (!team || !team.conflicts || !team.conflicts.length) return 'No conflicts';
+    return team.conflicts.map(c =>
+      c.allDay
+        ? `${fmtDate(c.date)} — All day`
+        : `${fmtDate(c.date)} — ${(c.blockedRanges||[]).map(r=>`${fmtTime(r.start)}–${fmtTime(r.end)}`).join(', ')}`
+    ).join('<br>');
+  }
+
+  /* team name with hover tooltip showing conflicts */
+  function teamNameWithTooltip(id) {
+    const name = teamName(id);
+    const summary = conflictSummary(id);
+    return `<span class="team-tooltip">${name}<div class="tooltip-box"><strong>Conflicts:</strong><br>${summary}</div></span>`;
+  }
+
+  /* ══ Tab Management ══ */
   function switchTab(tabId) {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
     const el = $(`tab-${tabId}`);
     if (el) el.classList.add('active');
     document.querySelector(`[data-tab="${tabId}"]`)?.classList.add('active');
-
     if (tabId === 'setup')     renderSetup();
     if (tabId === 'dates')     renderDates();
     if (tabId === 'generate')  renderGenSummary();
@@ -66,7 +81,7 @@
     if (tabId === 'standings') renderStandings();
   }
 
-  /* ══ League Management ══════════════════════ */
+  /* ══ League ══ */
   function renderLeagueSelect() {
     const sel = $('league-select');
     sel.innerHTML = '';
@@ -76,8 +91,7 @@
     }
     state.leagues.forEach(l => {
       const opt = document.createElement('option');
-      opt.value = l.id;
-      opt.textContent = l.name;
+      opt.value = l.id; opt.textContent = l.name;
       if (l.id === state.currentLeagueId) opt.selected = true;
       sel.appendChild(opt);
     });
@@ -87,51 +101,42 @@
     const lg = Storage.defaultLeague(name);
     state.leagues.push(lg);
     state.currentLeagueId = lg.id;
-    save();
-    renderLeagueSelect();
-    renderSetup();
-    switchTab('setup');
+    save(); renderLeagueSelect(); renderSetup(); switchTab('setup');
   }
 
-  /* ══ SETUP TAB ══════════════════════════════ */
+  /* ══ SETUP ══ */
   function renderSetup() {
     const lg = league();
     if (!lg) {
       $('card-settings').innerHTML = `<div class="empty-msg">Create or select a league to get started.</div>`;
       return;
     }
-
     $('s-name').value        = lg.name;
     $('s-games').value       = lg.settings.gamesPerTeam;
     $('s-max-week').value    = lg.settings.maxGamesPerWeek;
     $('s-duration').value    = lg.settings.gameDuration;
     $('s-buffer').value      = lg.settings.buffer;
     $('s-avoid-b2b').checked = lg.settings.avoidBackToBack;
-
     $('team-badge').textContent = lg.teams.length;
-
     renderGymsList();
     renderTeamsGrid();
   }
 
   function saveSettings() {
-    const lg = league();
-    if (!lg) return;
+    const lg = league(); if (!lg) return;
     lg.name = $('s-name').value.trim() || lg.name;
     lg.settings.gamesPerTeam    = parseInt($('s-games').value) || 10;
     lg.settings.maxGamesPerWeek = parseInt($('s-max-week').value) || 2;
     lg.settings.gameDuration    = parseInt($('s-duration').value) || 60;
     lg.settings.buffer          = parseInt($('s-buffer').value) || 15;
     lg.settings.avoidBackToBack = $('s-avoid-b2b').checked;
-    Storage.updateLeague(state, lg);
-    save();
-    renderLeagueSelect();
+    Storage.updateLeague(state, lg); save(); renderLeagueSelect();
     const ind = $('settings-saved');
     ind.style.display = 'inline';
     setTimeout(() => ind.style.display = 'none', 2000);
   }
 
-  /* ── Gyms ─────────────────────────────────── */
+  /* ── Gyms ── */
   function renderGymsList() {
     const lg = league();
     const el = $('gyms-list');
@@ -148,29 +153,23 @@
   }
 
   function addGym() {
-    const lg = league();
-    if (!lg) return alert('Select or create a league first.');
-    const name   = $('gym-name').value.trim();
+    const lg = league(); if (!lg) return alert('Select or create a league first.');
+    const name = $('gym-name').value.trim();
     const courts = parseInt($('gym-courts').value) || 1;
     if (!name) return;
     lg.gyms.push({ id: uid(), name, courts });
-    Storage.updateLeague(state, lg);
-    save();
-    $('gym-name').value = '';
-    $('gym-courts').value = 1;
+    Storage.updateLeague(state, lg); save();
+    $('gym-name').value = ''; $('gym-courts').value = 1;
     renderGymsList();
   }
 
   function removeGym(id) {
-    const lg = league();
-    if (!lg) return;
+    const lg = league(); if (!lg) return;
     lg.gyms = lg.gyms.filter(g => g.id !== id);
-    Storage.updateLeague(state, lg);
-    save();
-    renderGymsList();
+    Storage.updateLeague(state, lg); save(); renderGymsList();
   }
 
-  /* ── Teams ────────────────────────────────── */
+  /* ── Teams ── */
   function renderTeamsGrid() {
     const lg = league();
     const el = $('teams-grid');
@@ -199,35 +198,27 @@
   }
 
   function addTeam() {
-    const lg = league();
-    if (!lg) return alert('Select or create a league first.');
-    const name = $('team-name').value.trim();
-    if (!name) return;
+    const lg = league(); if (!lg) return alert('Select or create a league first.');
+    const name = $('team-name').value.trim(); if (!name) return;
     lg.teams.push({ id: uid(), name, conflicts: [] });
-    Storage.updateLeague(state, lg);
-    save();
-    $('team-name').value = '';
-    renderTeamsGrid();
+    Storage.updateLeague(state, lg); save();
+    $('team-name').value = ''; renderTeamsGrid();
   }
 
   function removeTeam(id) {
-    const lg = league();
-    if (!lg) return;
+    const lg = league(); if (!lg) return;
     if (!confirm('Remove this team?')) return;
     lg.teams = lg.teams.filter(t => t.id !== id);
-    Storage.updateLeague(state, lg);
-    save();
-    renderTeamsGrid();
+    Storage.updateLeague(state, lg); save(); renderTeamsGrid();
   }
 
-  /* ── Conflicts Modal ──────────────────────── */
+  /* ── Conflicts Modal ── */
   function openConflictsModal(teamId) {
     const lg = league();
     activeConflictTeamId = teamId;
     const team = lg.teams.find(t => t.id === teamId);
     if (!team) return;
-    renderConflictsModal(team);
-    openModal();
+    renderConflictsModal(team); openModal();
   }
 
   function renderConflictsModal(team) {
@@ -240,7 +231,7 @@
           <div class="conflict-row">
             <div class="conflict-info">
               <div class="conflict-date">${fmtDate(c.date)}</div>
-              <div class="conflict-times">${c.allDay ? 'All day' : (c.blockedRanges || []).map(r => `${fmtTime(r.start)}–${fmtTime(r.end)}`).join(', ')}</div>
+              <div class="conflict-times">${c.allDay ? 'All day' : (c.blockedRanges||[]).map(r=>`${fmtTime(r.start)}–${fmtTime(r.end)}`).join(', ')}</div>
             </div>
             <button class="btn btn-danger btn-sm" onclick="App.removeConflict(${i})">Remove</button>
           </div>`).join('') || '<p class="text-sm text-muted">No conflicts added.</p>'}
@@ -271,53 +262,40 @@
   }
 
   function toggleConflictTime() {
-    const allDay = $('c-allday').checked;
-    $('c-time-section').style.display = allDay ? 'none' : 'block';
+    $('c-time-section').style.display = $('c-allday').checked ? 'none' : 'block';
   }
 
   function addConflict() {
-    const lg   = league();
-    const team = lg.teams.find(t => t.id === activeConflictTeamId);
-    if (!team) return;
-    const date   = $('c-date').value;
-    if (!date) return alert('Please select a date.');
+    const lg = league();
+    const team = lg.teams.find(t => t.id === activeConflictTeamId); if (!team) return;
+    const date = $('c-date').value; if (!date) return alert('Please select a date.');
     const allDay = $('c-allday').checked;
     const conflict = { date, allDay };
     if (!allDay) {
-      const start = $('c-start').value;
-      const end   = $('c-end').value;
+      const start = $('c-start').value, end = $('c-end').value;
       if (!start || !end) return alert('Enter start and end times.');
       conflict.blockedRanges = [{ start, end }];
     }
     team.conflicts = team.conflicts || [];
     team.conflicts.push(conflict);
-    Storage.updateLeague(state, lg);
-    save();
+    Storage.updateLeague(state, lg); save();
     renderConflictsModal(team);
   }
 
   function removeConflict(idx) {
-    const lg   = league();
-    const team = lg.teams.find(t => t.id === activeConflictTeamId);
-    if (!team) return;
+    const lg = league();
+    const team = lg.teams.find(t => t.id === activeConflictTeamId); if (!team) return;
     team.conflicts.splice(idx, 1);
-    Storage.updateLeague(state, lg);
-    save();
+    Storage.updateLeague(state, lg); save();
     renderConflictsModal(team);
   }
 
-  function saveConflicts() {
-    closeModal();
-    renderTeamsGrid();
-  }
+  function saveConflicts() { closeModal(); renderTeamsGrid(); }
 
-  /* ══ DATES TAB ══════════════════════════════ */
+  /* ══ DATES TAB ══ */
   function renderDates() {
     const lg = league();
-    if (!lg) {
-      $('dates-list').innerHTML = '<div class="empty-msg">Select or create a league first.</div>';
-      return;
-    }
+    if (!lg) { $('dates-list').innerHTML = '<div class="empty-msg">Select or create a league first.</div>'; return; }
     initCalendar(lg);
     renderDatesList(lg);
   }
@@ -327,30 +305,84 @@
     const container = $('cal-container');
     container.innerHTML = '';
     const input = document.createElement('input');
-    input.type  = 'text';
-    input.style.display = 'none';
+    input.type = 'text'; input.style.display = 'none';
     container.appendChild(input);
-
-    const selectedDates = (lg.availableDates || []).map(d => d.date);
 
     calInstance = flatpickr(input, {
       inline: true,
       mode: 'multiple',
-      defaultDate: selectedDates,
+      defaultDate: (lg.availableDates || []).map(d => d.date),
       onChange(dates) {
-        const lg2 = league();
-        if (!lg2) return;
+        const lg2 = league(); if (!lg2) return;
         const newDates = dates.map(d => d.toLocaleDateString('en-CA'));
         const existing = lg2.availableDates || [];
-        const updated  = newDates.map(nd => {
-          return existing.find(e => e.date === nd) || { date: nd, gymIds: [], times: [] };
-        });
-        lg2.availableDates = updated.sort((a,b) => a.date.localeCompare(b.date));
-        Storage.updateLeague(state, lg2);
-        save();
+        lg2.availableDates = newDates
+          .map(nd => existing.find(e => e.date === nd) || { date: nd, gymIds: [], times: [] })
+          .sort((a,b) => a.date.localeCompare(b.date));
+        Storage.updateLeague(state, lg2); save();
         renderDatesList(lg2);
       }
     });
+  }
+
+  /* ── Bulk Apply ── */
+  function renderBulkSlots() {
+    const el = $('bulk-slots-grid'); if (!el) return;
+    el.innerHTML = bulkTimes.sort().map(t => `
+      <div class="slot-chip">${fmtTime(t)}
+        <button class="remove-slot" onclick="App.removeBulkSlot('${t}')">✕</button>
+      </div>`).join('') || '<span class="text-sm text-muted">No times added yet.</span>';
+  }
+
+  function quickFillBulk() {
+    const lg = league();
+    const start = $('bulk-start')?.value, end = $('bulk-end')?.value;
+    if (!start || !end) return alert('Enter both a start and end time.');
+    const dur   = (lg.settings.gameDuration || 60) + (lg.settings.buffer || 15);
+    const toMin = t => { const [h,m] = t.split(':').map(Number); return h*60+m; };
+    const toStr = n => `${String(Math.floor(n/60)).padStart(2,'0')}:${String(n%60).padStart(2,'0')}`;
+    for (let cur = toMin(start); cur + (lg.settings.gameDuration||60) <= toMin(end)+1; cur += dur) {
+      const ts = toStr(cur);
+      if (!bulkTimes.includes(ts)) bulkTimes.push(ts);
+    }
+    renderBulkSlots();
+  }
+
+  function addBulkSingleSlot() {
+    const t = $('bulk-single')?.value; if (!t) return;
+    if (!bulkTimes.includes(t)) { bulkTimes.push(t); renderBulkSlots(); }
+  }
+
+  function removeBulkSlot(time) {
+    bulkTimes = bulkTimes.filter(t => t !== time); renderBulkSlots();
+  }
+
+  function applyToAll() {
+    const lg = league();
+    if (!lg || !lg.availableDates.length) return alert('No dates selected yet.');
+    const selectedGymIds = lg.gyms.filter(g => $(`bulk-gym-${g.id}`)?.checked).map(g => g.id);
+    if (!selectedGymIds.length && !bulkTimes.length)
+      return alert('Select at least one gym or add at least one time slot.');
+
+    const ok = confirm(
+      `Apply to all ${lg.availableDates.length} dates?\n\n` +
+      `Gyms: ${selectedGymIds.map(id => gymName(id)).join(', ') || 'none'}\n` +
+      `Times: ${bulkTimes.sort().map(fmtTime).join(', ') || 'none'}\n\n` +
+      `This will REPLACE existing settings on all dates.`
+    );
+    if (!ok) return;
+
+    lg.availableDates.forEach(dc => {
+      if (selectedGymIds.length) dc.gymIds = [...selectedGymIds];
+      if (bulkTimes.length)      dc.times  = [...bulkTimes];
+    });
+    Storage.updateLeague(state, lg); save(); renderDatesList(lg);
+
+    const btn = $('btn-apply-all');
+    if (btn) {
+      btn.textContent = '✓ Applied!'; btn.style.background = 'var(--success)';
+      setTimeout(() => { btn.textContent = '⚡ Apply to All Dates'; btn.style.background = ''; }, 2000);
+    }
   }
 
   function renderDatesList(lg) {
@@ -361,14 +393,37 @@
 
     badge.textContent = `${dates.length} date${dates.length !== 1 ? 's' : ''}`;
 
-    if (!dates.length) {
-      el.innerHTML = '';
-      noMsg.style.display = 'block';
-      return;
-    }
+    if (!dates.length) { el.innerHTML = ''; noMsg.style.display = 'block'; return; }
     noMsg.style.display = 'none';
 
-    el.innerHTML = dates.map(dc => {
+    const bulkPanel = `
+      <div class="bulk-panel">
+        <div class="bulk-panel-header">
+          <span class="bulk-panel-title">⚡ Apply Same Schedule to All Dates</span>
+          <span class="text-sm text-muted">Set gyms and times once, push to every date instantly</span>
+        </div>
+        <div class="date-section-label" style="margin-top:14px">Gyms for All Dates</div>
+        <div class="gym-checks">
+          ${lg.gyms.length
+            ? lg.gyms.map(g => `<label class="gym-check-label"><input type="checkbox" id="bulk-gym-${g.id}"> ${g.name} (${g.courts}c)</label>`).join('')
+            : '<span class="text-sm text-muted">No gyms yet — add them in Setup first.</span>'}
+        </div>
+        <div class="date-section-label">Time Slots for All Dates</div>
+        <div class="timeslot-controls">
+          <input type="time" id="bulk-start" step="600">
+          <span class="text-sm text-muted">to</span>
+          <input type="time" id="bulk-end" step="600">
+          <button class="btn btn-primary btn-sm" onclick="App.quickFillBulk()">Quick Fill</button>
+          <input type="time" id="bulk-single" step="600">
+          <button class="btn btn-outline btn-sm" onclick="App.addBulkSingleSlot()">+ Add Time</button>
+        </div>
+        <div class="slots-grid" id="bulk-slots-grid" style="margin-bottom:16px">
+          <span class="text-sm text-muted">No times added yet.</span>
+        </div>
+        <button id="btn-apply-all" class="btn btn-accent" onclick="App.applyToAll()">⚡ Apply to All Dates</button>
+      </div>`;
+
+    const dateRows = dates.map(dc => {
       const slotCount = dc.times.length;
       const gymNames  = (dc.gymIds || []).map(id => gymName(id)).join(', ') || 'No gyms';
       return `
@@ -386,7 +441,7 @@
                 <input type="checkbox" ${dc.gymIds.includes(g.id) ? 'checked' : ''}
                   onchange="App.toggleGymOnDate('${dc.date}','${g.id}',this.checked)">
                 ${g.name} (${g.courts}c)
-              </label>`).join('') : '<span class="text-sm text-muted">No gyms yet — add them in Setup.</span>'}
+              </label>`).join('') : '<span class="text-sm text-muted">No gyms yet.</span>'}
           </div>
           <div class="date-section-label">Game Start Times</div>
           <div class="timeslot-controls">
@@ -403,54 +458,42 @@
         </div>
       </div>`;
     }).join('');
+
+    el.innerHTML = bulkPanel + dateRows;
   }
 
   function slotChip(date, time) {
-    return `<div class="slot-chip">
-      ${fmtTime(time)}
-      <button class="remove-slot" onclick="App.removeSlot('${date}','${time}')">✕</button>
-    </div>`;
+    return `<div class="slot-chip">${fmtTime(time)}<button class="remove-slot" onclick="App.removeSlot('${date}','${time}')">✕</button></div>`;
   }
 
   function toggleDate(date) {
-    const body = $(`db-${date}`);
-    const icon = $(`dei-${date}`);
+    const body = $(`db-${date}`), icon = $(`dei-${date}`);
     const open = body.classList.toggle('open');
     icon.classList.toggle('open', open);
   }
 
   function toggleGymOnDate(date, gymId, checked) {
     const lg = league();
-    const dc = lg.availableDates.find(d => d.date === date);
-    if (!dc) return;
+    const dc = lg.availableDates.find(d => d.date === date); if (!dc) return;
     if (checked && !dc.gymIds.includes(gymId)) dc.gymIds.push(gymId);
     if (!checked) dc.gymIds = dc.gymIds.filter(id => id !== gymId);
-    Storage.updateLeague(state, lg);
-    save();
+    Storage.updateLeague(state, lg); save();
   }
 
   function quickFillSlots(date) {
-    const lg  = league();
-    const dc  = lg.availableDates.find(d => d.date === date);
-    if (!dc) return;
-    const start = $(`ts-start-${date}`)?.value;
-    const end   = $(`ts-end-${date}`)?.value;
+    const lg = league();
+    const dc = lg.availableDates.find(d => d.date === date); if (!dc) return;
+    const start = $(`ts-start-${date}`)?.value, end = $(`ts-end-${date}`)?.value;
     if (!start || !end) return alert('Enter both a start and end time.');
-
-    const dur    = (lg.settings.gameDuration || 60) + (lg.settings.buffer || 15);
-    const toMin  = t => { const [h,m] = t.split(':').map(Number); return h*60+m; };
-    const toStr  = n => `${String(Math.floor(n/60)).padStart(2,'0')}:${String(n%60).padStart(2,'0')}`;
-
-    const startMin = toMin(start);
-    const endMin   = toMin(end);
-    const newTimes = [];
-    for (let cur = startMin; cur + (lg.settings.gameDuration || 60) <= endMin + 1; cur += dur) {
+    const dur   = (lg.settings.gameDuration||60) + (lg.settings.buffer||15);
+    const toMin = t => { const [h,m] = t.split(':').map(Number); return h*60+m; };
+    const toStr = n => `${String(Math.floor(n/60)).padStart(2,'0')}:${String(n%60).padStart(2,'0')}`;
+    for (let cur = toMin(start); cur + (lg.settings.gameDuration||60) <= toMin(end)+1; cur += dur) {
       const ts = toStr(cur);
-      if (!dc.times.includes(ts)) newTimes.push(ts);
+      if (!dc.times.includes(ts)) dc.times.push(ts);
     }
-    dc.times = [...new Set([...dc.times, ...newTimes])];
-    Storage.updateLeague(state, lg);
-    save();
+    dc.times = [...new Set(dc.times)];
+    Storage.updateLeague(state, lg); save();
     const sg = $(`sg-${date}`);
     if (sg) sg.innerHTML = dc.times.sort().map(t => slotChip(date, t)).join('');
   }
@@ -462,8 +505,7 @@
     if (!dc || !t) return;
     if (!dc.times.includes(t)) {
       dc.times.push(t);
-      Storage.updateLeague(state, lg);
-      save();
+      Storage.updateLeague(state, lg); save();
       const sg = $(`sg-${date}`);
       if (sg) sg.innerHTML = dc.times.sort().map(ts => slotChip(date, ts)).join('');
     }
@@ -471,16 +513,14 @@
 
   function removeSlot(date, time) {
     const lg = league();
-    const dc = lg.availableDates.find(d => d.date === date);
-    if (!dc) return;
+    const dc = lg.availableDates.find(d => d.date === date); if (!dc) return;
     dc.times = dc.times.filter(t => t !== time);
-    Storage.updateLeague(state, lg);
-    save();
+    Storage.updateLeague(state, lg); save();
     const sg = $(`sg-${date}`);
     if (sg) sg.innerHTML = dc.times.sort().map(t => slotChip(date, t)).join('');
   }
 
-  /* ══ GENERATE TAB ═══════════════════════════ */
+  /* ══ GENERATE TAB ══ */
   function renderGenSummary() {
     const lg = league();
     const el = $('gen-summary');
@@ -488,15 +528,14 @@
 
     const n   = lg.teams.length;
     const rpc = n % 2 === 0 ? n - 1 : n;
-    const totalSlots = (lg.availableDates || []).reduce((acc, dc) => {
-      return acc + dc.times.length * dc.gymIds.reduce((s, gid) => {
+    const totalSlots = (lg.availableDates || []).reduce((acc, dc) =>
+      acc + dc.times.length * dc.gymIds.reduce((s, gid) => {
         const gym = lg.gyms.find(g => g.id === gid);
         return s + (gym ? gym.courts : 0);
-      }, 0);
-    }, 0);
+      }, 0), 0);
 
     const warn = lg.settings.gamesPerTeam > rpc
-      ? `<p style="color:var(--warn);margin-top:8px;font-size:13px">⚠ ${n} teams = ${rpc} unique rounds. Games per team > ${rpc} will repeat matchups.</p>`
+      ? `<p style="color:var(--warn);margin-top:8px;font-size:13px">⚠ ${n} teams = ${rpc} unique matchups per team. Games per team capped at ${rpc} to prevent rematches.</p>`
       : '';
 
     el.innerHTML = `
@@ -504,11 +543,13 @@
       ${row('League', lg.name)}
       ${row('Teams', n)}
       ${row('Gyms', lg.gyms.length)}
-      ${row('Game dates', (lg.availableDates || []).length)}
+      ${row('Game dates', (lg.availableDates||[]).length)}
       ${row('Total time slots', totalSlots)}
-      ${row('Games per team', lg.settings.gamesPerTeam)}
+      ${row('Games per team (max ' + rpc + ')', Math.min(lg.settings.gamesPerTeam, rpc))}
       ${row('Max games / week', lg.settings.maxGamesPerWeek)}
       ${row('Game duration', lg.settings.gameDuration + ' min')}
+      ${row('Home/Away split', 'Balanced 50/50')}
+      ${row('Rematches', 'None — each pair plays once')}
       ${row('Avoid back-to-back', lg.settings.avoidBackToBack ? 'Yes' : 'No')}
       ${warn}`;
   }
@@ -523,7 +564,6 @@
     if (!lg) { res.className = 'gen-result error'; res.textContent = 'No league selected.'; return; }
 
     const result = Scheduler.generate(lg);
-
     if (!result.ok) {
       res.className = 'gen-result error';
       res.innerHTML = result.errors.map(e => `• ${e}`).join('<br>');
@@ -532,8 +572,7 @@
 
     lg.schedule = result.scheduled;
     lg.flagged  = result.flagged;
-    Storage.updateLeague(state, lg);
-    save();
+    Storage.updateLeague(state, lg); save();
 
     const total   = result.scheduled.length + result.flagged.length;
     const flagged = result.flagged.length;
@@ -543,13 +582,12 @@
       res.innerHTML = `✅ <strong>${result.scheduled.length} games</strong> scheduled successfully!`;
     } else {
       res.className = 'gen-result warn';
-      res.innerHTML = `⚡ <strong>${result.scheduled.length} of ${total} games</strong> scheduled. 
-        <strong>${flagged} game${flagged !== 1 ? 's' : ''}</strong> flagged — 
-        go to the Schedule tab to assign them manually.`;
+      res.innerHTML = `⚡ <strong>${result.scheduled.length} of ${total} games</strong> scheduled.
+        <strong>${flagged}</strong> flagged — assign them manually in the Schedule tab.`;
     }
   }
 
-  /* ══ SCHEDULE TAB ═══════════════════════════ */
+  /* ══ SCHEDULE TAB ══ */
   function renderSchedule() {
     const lg        = league();
     const view      = $('schedule-view');
@@ -557,10 +595,7 @@
     const flagPanel = $('flagged-panel');
 
     if (!lg || (!lg.schedule?.length && !lg.flagged?.length)) {
-      view.innerHTML = '';
-      noMsg.style.display = 'block';
-      flagPanel.style.display = 'none';
-      return;
+      view.innerHTML = ''; noMsg.style.display = 'block'; flagPanel.style.display = 'none'; return;
     }
     noMsg.style.display = 'none';
 
@@ -582,14 +617,10 @@
   }
 
   function renderByWeek(lg, view) {
-    const games  = [...(lg.schedule || [])].sort((a,b) => (a.date||'').localeCompare(b.date||'') || (a.time||'').localeCompare(b.time||''));
+    const games  = [...(lg.schedule||[])].sort((a,b)=>(a.date||'').localeCompare(b.date||'')||(a.time||'').localeCompare(b.time||''));
     const byWeek = {};
-    games.forEach(g => {
-      const w = g.week || getWeek(g.date);
-      if (!byWeek[w]) byWeek[w] = [];
-      byWeek[w].push(g);
-    });
-    view.innerHTML = Object.keys(byWeek).sort((a,b) => a-b).map(week => `
+    games.forEach(g => { const w = g.week||getWeek(g.date); if (!byWeek[w]) byWeek[w]=[]; byWeek[w].push(g); });
+    view.innerHTML = Object.keys(byWeek).sort((a,b)=>a-b).map(week => `
       <div class="week-block">
         <div class="week-header">Week ${week}</div>
         ${gamesTable(byWeek[week])}
@@ -597,12 +628,9 @@
   }
 
   function renderByDate(lg, view) {
-    const games  = [...(lg.schedule || [])].sort((a,b) => (a.date||'').localeCompare(b.date||'') || (a.time||'').localeCompare(b.time||''));
+    const games  = [...(lg.schedule||[])].sort((a,b)=>(a.date||'').localeCompare(b.date||'')||(a.time||'').localeCompare(b.time||''));
     const byDate = {};
-    games.forEach(g => {
-      if (!byDate[g.date]) byDate[g.date] = [];
-      byDate[g.date].push(g);
-    });
+    games.forEach(g => { if (!byDate[g.date]) byDate[g.date]=[]; byDate[g.date].push(g); });
     view.innerHTML = Object.keys(byDate).sort().map(date => `
       <div class="week-block">
         <div class="week-header">${fmtDate(date)}</div>
@@ -612,13 +640,14 @@
 
   function renderByTeam(lg, view) {
     view.innerHTML = lg.teams.map(t => {
-      const games = (lg.schedule || [])
-        .filter(g => g.homeTeamId === t.id || g.awayTeamId === t.id)
-        .sort((a,b) => (a.date||'').localeCompare(b.date||''));
+      const games = (lg.schedule||[]).filter(g=>g.homeTeamId===t.id||g.awayTeamId===t.id)
+        .sort((a,b)=>(a.date||'').localeCompare(b.date||''));
       if (!games.length) return '';
+      const homeGames = games.filter(g => g.homeTeamId === t.id).length;
+      const awayGames = games.filter(g => g.awayTeamId === t.id).length;
       return `
       <div class="week-block">
-        <div class="week-header">${t.name} — ${games.length} game${games.length !== 1 ? 's' : ''}</div>
+        <div class="week-header">${t.name} — ${games.length} games (${homeGames}H / ${awayGames}A)</div>
         ${gamesTable(games)}
       </div>`;
     }).join('');
@@ -628,14 +657,15 @@
     return `
       <table class="games-table">
         <thead>
-          <tr><th>Date</th><th>Time</th><th>Matchup</th><th>Gym</th><th>Score</th><th>Edit</th></tr>
+          <tr><th>Date</th><th>Time</th><th>Home</th><th>Away</th><th>Gym</th><th>Score</th><th>Edit</th></tr>
         </thead>
         <tbody>
           ${games.map(g => `
             <tr>
               <td>${fmtDate(g.date)}</td>
               <td>${fmtTime(g.time)}</td>
-              <td class="matchup-cell">${teamName(g.homeTeamId)} <span class="vs-text">vs</span> ${teamName(g.awayTeamId)}</td>
+              <td class="matchup-cell">${teamNameWithTooltip(g.homeTeamId)}</td>
+              <td class="matchup-cell">${teamNameWithTooltip(g.awayTeamId)}</td>
               <td>${gymName(g.gymId)}</td>
               <td>${g.homeScore != null ? `<strong>${g.homeScore}–${g.awayScore}</strong>` : '—'}</td>
               <td><button class="edit-game-btn" onclick="App.openEditGame('${g.id}')">✏ Edit</button></td>
@@ -644,24 +674,42 @@
       </table>`;
   }
 
-  /* ── Edit Game Modal ──────────────────────── */
+  /* ── Edit Game Modal ── */
   function openEditGame(gameId, fromFlagged = false) {
     const lg = league();
     activeEditGameId = gameId;
-    const game = (lg.schedule || []).find(g => g.id === gameId)
-              || (lg.flagged  || []).find(g => g.id === gameId);
+    const game = (lg.schedule||[]).find(g=>g.id===gameId) || (lg.flagged||[]).find(g=>g.id===gameId);
     if (!game) return;
 
     const gymOptions = lg.gyms.map(g =>
-      `<option value="${g.id}" ${g.id === game.gymId ? 'selected' : ''}>${g.name}</option>`
-    ).join('');
+      `<option value="${g.id}" ${g.id===game.gymId?'selected':''}>${g.name}</option>`).join('');
+
+    // Build conflict info for both teams
+    function conflictBlock(teamId) {
+      const team = lg.teams.find(t => t.id === teamId);
+      const conflicts = team?.conflicts || [];
+      if (!conflicts.length) return '<em class="text-muted">No conflicts on file</em>';
+      return conflicts.map(c =>
+        `<div class="conflict-tag">${fmtDate(c.date)} — ${c.allDay ? 'All day' : (c.blockedRanges||[]).map(r=>`${fmtTime(r.start)}–${fmtTime(r.end)}`).join(', ')}</div>`
+      ).join('');
+    }
 
     $('modal-content').innerHTML = `
       <h2 class="modal-title">${fromFlagged ? 'Assign Game' : 'Edit Game'}</h2>
-      <p class="text-sm text-muted" style="margin-bottom:18px">
-        ${teamName(game.homeTeamId)} vs ${teamName(game.awayTeamId)}<br>
-        <em>No conflict rules enforced on manual edits.</em>
-      </p>
+
+      <div class="conflict-summary-grid">
+        <div class="conflict-summary-block">
+          <div class="conflict-summary-team">🏠 ${teamName(game.homeTeamId)}</div>
+          <div class="conflict-summary-list">${conflictBlock(game.homeTeamId)}</div>
+        </div>
+        <div class="conflict-summary-block">
+          <div class="conflict-summary-team">✈ ${teamName(game.awayTeamId)}</div>
+          <div class="conflict-summary-list">${conflictBlock(game.awayTeamId)}</div>
+        </div>
+      </div>
+
+      <p class="text-sm text-muted" style="margin:12px 0 16px"><em>No conflict rules enforced on manual edits.</em></p>
+
       <div class="modal-form-grid">
         <div class="modal-fg">
           <label>Date</label>
@@ -688,40 +736,28 @@
 
   function saveGameEdit(fromFlagged) {
     const lg   = league();
-    const date = $('eg-date').value;
-    const time = $('eg-time').value;
-    const gym  = $('eg-gym').value;
+    const date = $('eg-date').value, time = $('eg-time').value, gym = $('eg-gym').value;
     if (!date || !time) return alert('Date and time are required.');
 
-    let game = (lg.schedule || []).find(g => g.id === activeEditGameId);
+    let game = (lg.schedule||[]).find(g=>g.id===activeEditGameId);
     const isFlagged = !game;
-    if (isFlagged) game = (lg.flagged || []).find(g => g.id === activeEditGameId);
+    if (isFlagged) game = (lg.flagged||[]).find(g=>g.id===activeEditGameId);
     if (!game) return;
 
-    game.date  = date;
-    game.time  = time;
-    game.gymId = gym || null;
-    game.week  = getWeek(date);
+    game.date = date; game.time = time; game.gymId = gym || null; game.week = getWeek(date);
 
     if (isFlagged) {
       game.status = 'scheduled';
-      lg.flagged  = (lg.flagged || []).filter(g => g.id !== game.id);
-      lg.schedule = [...(lg.schedule || []), game];
+      lg.flagged  = (lg.flagged||[]).filter(g=>g.id!==game.id);
+      lg.schedule = [...(lg.schedule||[]), game];
     }
-
-    Storage.updateLeague(state, lg);
-    save();
-    closeModal();
-    renderSchedule();
+    Storage.updateLeague(state, lg); save(); closeModal(); renderSchedule();
   }
 
-  /* ══ STANDINGS TAB ══════════════════════════ */
+  /* ══ STANDINGS ══ */
   function renderStandings() {
     const lg = league();
-    if (!lg) {
-      $('standings-table').innerHTML = '<p class="text-muted">No league selected.</p>';
-      return;
-    }
+    if (!lg) { $('standings-table').innerHTML = '<p class="text-muted">No league selected.</p>'; return; }
 
     const stats = Exporter.computeStandings(lg);
 
@@ -733,57 +769,45 @@
           <thead>
             <tr>
               <th>#</th><th>Team</th>
-              <th style="text-align:center">W</th>
-              <th style="text-align:center">L</th>
-              <th style="text-align:center">T</th>
-              <th style="text-align:center">PCT</th>
-              <th style="text-align:center">PF</th>
-              <th style="text-align:center">PA</th>
+              <th style="text-align:center">W</th><th style="text-align:center">L</th>
+              <th style="text-align:center">T</th><th style="text-align:center">PCT</th>
+              <th style="text-align:center">PF</th><th style="text-align:center">PA</th>
               <th style="text-align:center">+/-</th>
             </tr>
           </thead>
           <tbody>
-            ${stats.map((s, i) => `
+            ${stats.map((s,i) => `
               <tr class="rank-${i+1}">
                 <td><span class="rank-num">${i+1}</span></td>
                 <td class="team-name-cell">${s.name}</td>
-                <td class="stat-cell">${s.w}</td>
-                <td class="stat-cell">${s.l}</td>
-                <td class="stat-cell">${s.t}</td>
-                <td class="pct-cell">${s.pct}</td>
-                <td class="stat-cell">${s.pf}</td>
-                <td class="stat-cell">${s.pa}</td>
-                <td class="stat-cell">${s.pf - s.pa >= 0 ? '+' : ''}${s.pf - s.pa}</td>
+                <td class="stat-cell">${s.w}</td><td class="stat-cell">${s.l}</td>
+                <td class="stat-cell">${s.t}</td><td class="pct-cell">${s.pct}</td>
+                <td class="stat-cell">${s.pf}</td><td class="stat-cell">${s.pa}</td>
+                <td class="stat-cell">${s.pf-s.pa>=0?'+':''}${s.pf-s.pa}</td>
               </tr>`).join('')}
           </tbody>
         </table>`;
     }
 
-    const games = (lg.schedule || []).filter(g => g.status !== 'flagged');
-    const noMsg = $('no-scores-msg');
-    const sl    = $('score-list');
-
-    if (!games.length) {
-      noMsg.style.display = 'block';
-      sl.innerHTML = '';
-    } else {
-      noMsg.style.display = 'none';
-      sl.innerHTML = `<div class="score-entry-list">
-        ${games.sort((a,b) => (a.date||'').localeCompare(b.date||'')).map(g => `
-          <div class="score-row">
-            <div class="matchup">${teamName(g.homeTeamId)} vs ${teamName(g.awayTeamId)}</div>
-            <div class="game-date">${fmtDate(g.date)}</div>
-            <div class="score-inputs">
-              <input type="number" min="0" value="${g.homeScore ?? ''}" placeholder="H"
-                onchange="App.enterScore('${g.id}', 'home', this.value)">
-              <span class="score-dash">–</span>
-              <input type="number" min="0" value="${g.awayScore ?? ''}" placeholder="A"
-                onchange="App.enterScore('${g.id}', 'away', this.value)">
-            </div>
-            <button class="btn btn-sm btn-success" onclick="App.saveScore('${g.id}')">✓ Save</button>
-          </div>`).join('')}
-      </div>`;
-    }
+    const games = (lg.schedule||[]).filter(g=>g.status!=='flagged');
+    const noMsg = $('no-scores-msg'), sl = $('score-list');
+    if (!games.length) { noMsg.style.display='block'; sl.innerHTML=''; return; }
+    noMsg.style.display = 'none';
+    sl.innerHTML = `<div class="score-entry-list">
+      ${games.sort((a,b)=>(a.date||'').localeCompare(b.date||'')).map(g => `
+        <div class="score-row">
+          <div class="matchup">${teamName(g.homeTeamId)} vs ${teamName(g.awayTeamId)}</div>
+          <div class="game-date">${fmtDate(g.date)}</div>
+          <div class="score-inputs">
+            <input type="number" min="0" value="${g.homeScore??''}" placeholder="H"
+              onchange="App.enterScore('${g.id}','home',this.value)">
+            <span class="score-dash">–</span>
+            <input type="number" min="0" value="${g.awayScore??''}" placeholder="A"
+              onchange="App.enterScore('${g.id}','away',this.value)">
+          </div>
+          <button class="btn btn-sm btn-success" onclick="App.saveScore('${g.id}')">✓ Save</button>
+        </div>`).join('')}
+    </div>`;
   }
 
   const scoreBuffer = {};
@@ -794,35 +818,27 @@
   }
 
   function saveScore(gameId) {
-    const lg   = league();
-    const game = (lg.schedule || []).find(g => g.id === gameId);
-    if (!game) return;
+    const lg = league();
+    const game = (lg.schedule||[]).find(g=>g.id===gameId); if (!game) return;
     const buf  = scoreBuffer[gameId] || {};
     if (buf.home !== undefined) game.homeScore = buf.home;
     if (buf.away !== undefined) game.awayScore = buf.away;
     if (game.homeScore != null && game.awayScore != null) game.status = 'completed';
-    Storage.updateLeague(state, lg);
-    save();
-    renderStandings();
+    Storage.updateLeague(state, lg); save(); renderStandings();
   }
 
-  /* ══ Modal ══════════════════════════════════ */
-  function openModal() {
-    $('modal-overlay').style.display = 'flex';
-  }
-
+  /* ══ Modal ══ */
+  function openModal()  { $('modal-overlay').style.display = 'flex'; }
   function closeModal() {
     $('modal-overlay').style.display = 'none';
     $('modal-content').innerHTML = '';
-    activeConflictTeamId = null;
-    activeEditGameId     = null;
+    activeConflictTeamId = null; activeEditGameId = null;
   }
 
-  /* ══ Event Listeners ════════════════════════ */
+  /* ══ Init ══ */
   function init() {
-    document.querySelectorAll('.nav-btn').forEach(btn => {
-      btn.addEventListener('click', () => switchTab(btn.dataset.tab));
-    });
+    document.querySelectorAll('.nav-btn').forEach(btn =>
+      btn.addEventListener('click', () => switchTab(btn.dataset.tab)));
 
     $('btn-new-league').addEventListener('click', () => {
       const name = prompt('League name:');
@@ -830,36 +846,27 @@
     });
 
     $('league-select').addEventListener('change', e => {
-      state.currentLeagueId = e.target.value;
-      save();
-      switchTab('setup');
+      state.currentLeagueId = e.target.value; save(); switchTab('setup');
     });
 
     $('btn-save-settings').addEventListener('click', saveSettings);
     $('btn-add-gym').addEventListener('click', addGym);
-    $('gym-name').addEventListener('keydown', e => e.key === 'Enter' && addGym());
+    $('gym-name').addEventListener('keydown', e => e.key==='Enter' && addGym());
     $('btn-add-team').addEventListener('click', addTeam);
-    $('team-name').addEventListener('keydown', e => e.key === 'Enter' && addTeam());
+    $('team-name').addEventListener('keydown', e => e.key==='Enter' && addTeam());
     $('btn-generate').addEventListener('click', runGenerate);
     $('view-mode').addEventListener('change', renderSchedule);
     $('btn-print').addEventListener('click', () => Exporter.print());
-    $('btn-pdf').addEventListener('click', () => { const lg = league(); if (lg) Exporter.toPDF(lg); });
-    $('btn-excel').addEventListener('click', () => { const lg = league(); if (lg) Exporter.toExcel(lg); });
+    $('btn-pdf').addEventListener('click', () => { const lg=league(); if(lg) Exporter.toPDF(lg); });
+    $('btn-excel').addEventListener('click', () => { const lg=league(); if(lg) Exporter.toExcel(lg); });
     $('modal-close').addEventListener('click', closeModal);
-    $('modal-overlay').addEventListener('click', e => {
-      if (e.target === $('modal-overlay')) closeModal();
-    });
+    $('modal-overlay').addEventListener('click', e => { if(e.target===$('modal-overlay')) closeModal(); });
 
     renderLeagueSelect();
-
     if (!state.leagues.length) {
       const lg = Storage.defaultLeague('My First League');
-      state.leagues.push(lg);
-      state.currentLeagueId = lg.id;
-      save();
-      renderLeagueSelect();
+      state.leagues.push(lg); state.currentLeagueId = lg.id; save(); renderLeagueSelect();
     }
-
     renderSetup();
   }
 
@@ -867,6 +874,7 @@
     removeGym, addGym, removeTeam,
     openConflictsModal, addConflict, removeConflict, saveConflicts, toggleConflictTime,
     toggleDate, toggleGymOnDate, quickFillSlots, addSingleSlot, removeSlot,
+    quickFillBulk, addBulkSingleSlot, removeBulkSlot, applyToAll,
     openEditGame, saveGameEdit, enterScore, saveScore, closeModal,
   };
 
